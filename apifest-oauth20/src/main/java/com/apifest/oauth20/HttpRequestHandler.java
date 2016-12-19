@@ -29,12 +29,7 @@ import java.util.regex.Pattern;
 import org.codehaus.jackson.JsonGenerationException;
 import org.codehaus.jackson.map.JsonMappingException;
 import org.codehaus.jackson.map.ObjectMapper;
-import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelFuture;
-import org.jboss.netty.channel.ChannelFutureListener;
-import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.channel.MessageEvent;
-import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
+import org.jboss.netty.channel.*;
 import org.jboss.netty.handler.codec.http.HttpHeaders;
 import org.jboss.netty.handler.codec.http.HttpMethod;
 import org.jboss.netty.handler.codec.http.HttpRequest;
@@ -63,7 +58,7 @@ public class HttpRequestHandler extends SimpleChannelUpstreamHandler {
     protected static final String ACCESS_TOKEN_REVOKE_URI = "/oauth20/tokens/revoke";
     protected static final String OAUTH_CLIENT_SCOPE_URI = "/oauth20/scopes";
 
-    protected static final String CLIENT_CREDENTIALS_PATTERN_STRING = "[a-f[0-9]]+";
+    protected static final String CLIENT_CREDENTIALS_PATTERN_STRING = "[a-zA-Z[0-9]]+";
     protected static final Pattern APPLICATION_PATTERN = Pattern.compile("/oauth20/applications/(" + CLIENT_CREDENTIALS_PATTERN_STRING + ")$");
     protected static final Pattern OAUTH_CLIENT_SCOPE_PATTERN = Pattern.compile("/oauth20/scopes/((\\p{Alnum}+-?_?)+$)");
 
@@ -501,5 +496,11 @@ public class HttpRequestHandler extends SimpleChannelUpstreamHandler {
             }
         }
         return response;
+    }
+
+    @Override
+    public void exceptionCaught(ChannelHandlerContext ctx, ExceptionEvent e) throws Exception {
+        log.error(e.getCause().getMessage(), e.getCause());
+        ctx.sendUpstream(e);
     }
 }
