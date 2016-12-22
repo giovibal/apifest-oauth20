@@ -86,6 +86,8 @@ public class HttpRequestHandler extends SimpleChannelUpstreamHandler {
                 invokeExceptionHandler(e2, req);
             }
 
+            log.info(req.getProtocolVersion() +" "+ req.getMethod() +" "+ req.getUri());
+
             HttpResponse response = null;
             if (APPLICATION_URI.equals(rawUri) && method.equals(HttpMethod.POST)) {
                 response = handleRegister(req);
@@ -168,6 +170,7 @@ public class HttpRequestHandler extends SimpleChannelUpstreamHandler {
         QueryStringDecoder dec = new QueryStringDecoder(req.getUri());
         Map<String, List<String>> params = dec.getParameters();
         String tokenParam = QueryParameter.getFirstElement(params, QueryParameter.TOKEN);
+        log.info("Validate token: "+ tokenParam);
         if (tokenParam == null || tokenParam.isEmpty()) {
             response = Response.createBadRequestResponse();
         } else {
@@ -175,12 +178,14 @@ public class HttpRequestHandler extends SimpleChannelUpstreamHandler {
             if (token != null) {
                 Gson gson = new Gson();
                 String json = gson.toJson(token);
+                log.info("Validate token (json response): "+ json);
                 log.debug(json);
                 response = Response.createOkResponse(json);
             } else {
                 response = Response.createUnauthorizedResponse();
             }
         }
+        log.info("Validate token (response status): "+ response.getStatus());
         return response;
     }
 
