@@ -115,7 +115,7 @@ public class CassandraDBManager implements DBManager {
         session.execute(ACCESS_TOKEN_TABLE_CQL);
 
         // create sec. indexes (if not exists)
-        session.execute(REDIRECT_URI_IDX);
+//        session.execute(REDIRECT_URI_IDX);
     }
 
     @Override
@@ -385,7 +385,8 @@ public class CassandraDBManager implements DBManager {
     public AuthCode findAuthCode(String authCode, String redirectUri) {
         Select.Where stmt = QueryBuilder.select().from(KEYSPACE_NAME, AUTH_CODE_TABLE_NAME)
                 .where(QueryBuilder.eq("code", authCode))
-                .and(QueryBuilder.eq("redirect_uri", redirectUri));
+//                .and(QueryBuilder.eq("redirect_uri", redirectUri))
+                ;
         try {
             ResultSet rs = session.execute(stmt);
             Iterator<Row> iter = rs.iterator();
@@ -393,17 +394,20 @@ public class CassandraDBManager implements DBManager {
                 Row row = iter.next();
                 boolean valid = row.getBool("valid");
                 if(valid) {
-                    AuthCode ret = new AuthCode();
-                    ret.setCode(row.getString("code"));
-                    ret.setClientId(row.getString("client_id"));
-                    ret.setRedirectUri(row.getString("redirect_uri"));
-                    ret.setState(row.getString("state"));
-                    ret.setScope(row.getString("scope"));
-                    ret.setType(row.getString("type"));
-                    ret.setValid(row.getBool("valid"));
-                    ret.setUserId(row.getString("user_id"));
-                    ret.setCreated(row.getTimestamp("created").getTime());
-                    return ret;
+                    String itemRedirectUri = row.getString("redirect_uri");
+                    if(redirectUri.equals(itemRedirectUri)) {
+                        AuthCode ret = new AuthCode();
+                        ret.setCode(row.getString("code"));
+                        ret.setClientId(row.getString("client_id"));
+                        ret.setRedirectUri(itemRedirectUri);
+                        ret.setState(row.getString("state"));
+                        ret.setScope(row.getString("scope"));
+                        ret.setType(row.getString("type"));
+                        ret.setValid(row.getBool("valid"));
+                        ret.setUserId(row.getString("user_id"));
+                        ret.setCreated(row.getTimestamp("created").getTime());
+                        return ret;
+                    }
                 }
             }
         } catch (NoHostAvailableException e) {
