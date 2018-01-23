@@ -24,51 +24,38 @@ import com.google.gson.JsonParser;
 import com.google.gson.JsonSyntaxException;
 
 /**
- * Represents request when POST to /oauth20/tokens/revoke.
+ * Represents request when DELETE to /oauth20/tokens.
  *
- * @author Rossitsa Borissova
+ * @author Ivan Zhivkov
  */
-public class RevokeTokenRequest {
+public class RevokeUserTokensRequest {
 
-    protected static final String ACCESS_TOKEN = "access_token";
-    protected static final String CLIENT_ID = "client_id";
+    protected static final String USER_ID = "user_id";
 
-    private String accessToken;
+    private String userId;
 
-    //TODO: remove it, not used anymore
-    private String clientId;
-
-    public RevokeTokenRequest(HttpRequest request) {
+    public RevokeUserTokensRequest(HttpRequest request) {
         String content = request.getContent().toString(CharsetUtil.UTF_8);
         JsonParser parser = new JsonParser();
         try {
             JsonObject jsonObj= parser.parse(content).getAsJsonObject();
-            this.accessToken = (jsonObj.get(ACCESS_TOKEN) != null) ? jsonObj.get(ACCESS_TOKEN).getAsString() : null;
-            this.clientId = (jsonObj.get(CLIENT_ID) != null) ? jsonObj.get(CLIENT_ID).getAsString() : null;
+            this.userId = (jsonObj.get(USER_ID) != null) ? jsonObj.get(USER_ID).getAsString() : null;
         } catch (JsonSyntaxException e) {
             // do nothing
         }
     }
 
-    public String getAccessToken() {
-        return accessToken;
+    public String getUserId() {
+        return userId;
     }
 
-    public void setAccessToken(String accessToken) {
-        this.accessToken = accessToken;
-    }
-
-    public String getClientId() {
-        return clientId;
-    }
-
-    public void setClientId(String clientId) {
-        this.clientId = clientId;
+    public void setUserId(String userId) {
+        this.userId = userId;
     }
 
     protected void checkMandatoryParams() throws OAuthException {
-        if (accessToken == null || accessToken.isEmpty()) {
-            throw new OAuthException(String.format(Response.MANDATORY_PARAM_MISSING, ACCESS_TOKEN),
+        if (userId == null || userId.isEmpty()) {
+            throw new OAuthException(String.format(Response.MANDATORY_PARAM_MISSING, USER_ID),
                     HttpResponseStatus.BAD_REQUEST);
         }
     }

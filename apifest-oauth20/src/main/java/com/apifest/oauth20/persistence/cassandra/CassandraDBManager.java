@@ -1,30 +1,31 @@
 package com.apifest.oauth20.persistence.cassandra;
 
-import com.apifest.oauth20.DBManager;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.apifest.oauth20.AccessToken;
+import com.apifest.oauth20.ApplicationInfo;
 import com.apifest.oauth20.AuthCode;
 import com.apifest.oauth20.ClientCredentials;
+import com.apifest.oauth20.DBManager;
 import com.apifest.oauth20.Scope;
-import com.apifest.oauth20.ApplicationInfo;
-import com.datastax.driver.core.Session;
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
+import com.datastax.driver.core.Session;
 import com.datastax.driver.core.exceptions.NoHostAvailableException;
 import com.datastax.driver.core.exceptions.QueryExecutionException;
 import com.datastax.driver.core.exceptions.QueryValidationException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import com.datastax.driver.core.querybuilder.Delete;
 import com.datastax.driver.core.querybuilder.Insert;
 import com.datastax.driver.core.querybuilder.QueryBuilder;
 import com.datastax.driver.core.querybuilder.Select;
 import com.datastax.driver.core.querybuilder.Update;
-
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
 
 /**
  * Created by Giovanni Baleani on 23/02/2016.
@@ -114,7 +115,7 @@ public class CassandraDBManager implements DBManager {
         session.execute(ACCESS_TOKEN_TABLE_CQL);
 
         // create sec. indexes (if not exists)
-        session.execute(REDIRECT_URI_IDX);
+//        session.execute(REDIRECT_URI_IDX);
     }
 
     @Override
@@ -309,9 +310,25 @@ public class CassandraDBManager implements DBManager {
         return list;
     }
 
-
-
-
+    @Override
+    public void removeUserTokens(String userId) {
+        Delete.Where stmt = QueryBuilder.delete().from(KEYSPACE_NAME, ACCESS_TOKEN_TABLE_NAME)
+                .where(QueryBuilder.eq("user_id", userId));
+        try {
+            session.execute(stmt);
+        } catch (NoHostAvailableException e) {
+            log.error("No host in the %s cluster can be contacted to execute the query.\n",
+                    session.getCluster());
+        } catch (QueryExecutionException e) {
+            log.error("An exception was thrown by Cassandra because it cannot " +
+                    "successfully execute the query with the specified consistency level.");
+        } catch (QueryValidationException e) {
+            log.error(String.format("The query %s \nis not valid, for example, incorrect syntax.\n",
+                    stmt.getQueryString()));
+        } catch (IllegalStateException e) {
+            log.error("The BoundStatement is not ready.");
+        }
+    }
 
     @Override
     public void storeAuthCode(AuthCode authCode) {
@@ -368,7 +385,8 @@ public class CassandraDBManager implements DBManager {
     public AuthCode findAuthCode(String authCode, String redirectUri) {
         Select.Where stmt = QueryBuilder.select().from(KEYSPACE_NAME, AUTH_CODE_TABLE_NAME)
                 .where(QueryBuilder.eq("code", authCode))
-                .and(QueryBuilder.eq("redirect_uri", redirectUri));
+//                .and(QueryBuilder.eq("redirect_uri", redirectUri))
+                ;
         try {
             ResultSet rs = session.execute(stmt);
             Iterator<Row> iter = rs.iterator();
@@ -376,17 +394,20 @@ public class CassandraDBManager implements DBManager {
                 Row row = iter.next();
                 boolean valid = row.getBool("valid");
                 if(valid) {
-                    AuthCode ret = new AuthCode();
-                    ret.setCode(row.getString("code"));
-                    ret.setClientId(row.getString("client_id"));
-                    ret.setRedirectUri(row.getString("redirect_uri"));
-                    ret.setState(row.getString("state"));
-                    ret.setScope(row.getString("scope"));
-                    ret.setType(row.getString("type"));
-                    ret.setValid(row.getBool("valid"));
-                    ret.setUserId(row.getString("user_id"));
-                    ret.setCreated(row.getTimestamp("created").getTime());
-                    return ret;
+                    String itemRedirectUri = row.getString("redirect_uri");
+                    if(redirectUri.equals(itemRedirectUri)) {
+                        AuthCode ret = new AuthCode();
+                        ret.setCode(row.getString("code"));
+                        ret.setClientId(row.getString("client_id"));
+                        ret.setRedirectUri(itemRedirectUri);
+                        ret.setState(row.getString("state"));
+                        ret.setScope(row.getString("scope"));
+                        ret.setType(row.getString("type"));
+                        ret.setValid(row.getBool("valid"));
+                        ret.setUserId(row.getString("user_id"));
+                        ret.setCreated(row.getTimestamp("created").getTime());
+                        return ret;
+                    }
                 }
             }
         } catch (NoHostAvailableException e) {

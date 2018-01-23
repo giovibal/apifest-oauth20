@@ -56,6 +56,7 @@ import org.testng.annotations.Test;
 
 import com.apifest.oauth20.api.UserDetails;
 
+
 /**
  * @author Rossitsa Borissova
  */
@@ -105,8 +106,10 @@ public class AuthorizationServerTest {
     public void when_response_type_not_supported_return_error_unsupported_response_type() {
         // GIVEN
         HttpRequest req = mock(HttpRequest.class);
-        willReturn("http://localhost/oauth20/authorize?client_id=1232&response_type=no").given(req).getUri();
-        willReturn(true).given(authServer).isActiveClientId("1232");
+        willReturn("http://localhost/oauth20/authorize?client_id=1232&response_type=no").given(req)
+            .getUri();
+        ClientCredentials client = new ClientCredentials();
+        willReturn(client).given(authServer).getActiveClientCredentials("1232");
 
         // WHEN
         HttpResponseStatus status = null;
@@ -130,7 +133,8 @@ public class AuthorizationServerTest {
         willReturn(
                 "http://localhost/oauth20/authorize?client_id=1232&response_type=code&redirect_uri=tp%3A%2F%2Fexample.com")
                 .given(req).getUri();
-        willReturn(true).given(authServer).isActiveClientId("1232");
+        ClientCredentials client = new ClientCredentials();
+        willReturn(client).given(authServer).getActiveClientCredentials("1232");
 
         // WHEN
         HttpResponseStatus status = null;
@@ -199,36 +203,36 @@ public class AuthorizationServerTest {
         given(authServer.db.findClientCredentials(clientId)).willReturn(creds);
 
         // WHEN
-        boolean result = authServer.isActiveClientId(clientId);
+        ClientCredentials result = authServer.getActiveClientCredentials(clientId);
 
         // THEN
-        assertTrue(result);
+        assertNotNull(result);
     }
 
     @Test
-    public void when_valid_client_id_and_inactive_status_return_true() throws Exception {
+    public void when_valid_client_id_and_inactive_status_return_null() throws Exception {
         // GIVEN
         ClientCredentials creds = mock(ClientCredentials.class);
         given(creds.getStatus()).willReturn(ClientCredentials.INACTIVE_STATUS);
         given(authServer.db.findClientCredentials(clientId)).willReturn(creds);
 
         // WHEN
-        boolean result = authServer.isActiveClientId(clientId);
+        ClientCredentials result = authServer.getActiveClientCredentials(clientId);
 
         // THEN
-        assertFalse(result);
+        assertNull(result);
     }
 
     @Test
-    public void when_not_valid_client_id_return_false() throws Exception {
+    public void when_not_valid_client_id_return_null() throws Exception {
         // GIVEN
         String clienId = "203598599234220";
 
         // WHEN
-        boolean result = authServer.isActiveClientId(clienId);
+        ClientCredentials result = authServer.getActiveClientCredentials(clientId);
 
         // THEN
-        assertFalse(result);
+        assertNull(result);
     }
 
     @Test
@@ -242,13 +246,13 @@ public class AuthorizationServerTest {
 
         // WHEN
         try {
-            authServer.issueAuthorizationCode(req);
+           authServer.issueAuthorizationCode(req);
         } catch (OAuthException e) {
             // nothing to do
         }
 
         // THEN
-        verify(authServer).isActiveClientId(clientId);
+        verify(authServer).getActiveClientCredentials(clientId);
     }
 
     @Test
@@ -270,6 +274,78 @@ public class AuthorizationServerTest {
 
         // THEN
         verify(authServer).generateCode();
+    }
+
+    @Test
+    public void when_issue_auth_code_verify_state_returned() throws Exception {
+        // GIVEN
+        HttpRequest req = mock(HttpRequest.class);
+        ClientCredentials client = mock(ClientCredentials.class);
+        String state = "someState";
+        given(client.getStatus()).willReturn(ClientCredentials.ACTIVE_STATUS);
+        given(authServer.db.findClientCredentials(clientId)).willReturn(client);
+
+        given(req.getUri())
+            .willReturn(
+                "http://example.com/oauth20/authorize?redirect_uri=http%3A%2F%2Fexample" +
+                    ".com&response_type=code&client_id=" + clientId + "&state=" + state);
+        willReturn("basic").given(authServer.scopeService).getValidScope(null, clientId);
+
+        // WHEN
+        String response = authServer.issueAuthorizationCode(req);
+
+        // THEN
+        verify(authServer).generateCode();
+        assertTrue(response.contains(state));
+    }
+
+    @Test
+    public void when_issue_auth_code_if_no_redirect_uri_use_client_app_redirect_uri() throws Exception {
+        // GIVEN
+        HttpRequest req = mock(HttpRequest.class);
+        ClientCredentials client = mock(ClientCredentials.class);
+        String state = "someState";
+        given(client.getStatus()).willReturn(ClientCredentials.ACTIVE_STATUS);
+        given(client.getUri()).willReturn("http://localhost:8080");
+        given(authServer.db.findClientCredentials(clientId)).willReturn(client);
+
+        given(req.getUri())
+            .willReturn(
+                "http://example.com/oauth20/authorize?response_type=code&client_id=" +
+                        clientId + "&state=" + state);
+        willReturn("basic").given(authServer.scopeService).getValidScope(null, clientId);
+
+        // WHEN
+        String response = authServer.issueAuthorizationCode(req);
+
+        // THEN
+        verify(authServer).generateCode();
+        assertTrue(response.contains("http://localhost:8080"));
+    }
+
+    @Test
+    public void when_issue_auth_code_with_redirect_uri_use_that_uri_in_response() throws Exception {
+        // GIVEN
+        HttpRequest req = mock(HttpRequest.class);
+        ClientCredentials client = mock(ClientCredentials.class);
+        String state = "someState";
+        given(client.getStatus()).willReturn(ClientCredentials.ACTIVE_STATUS);
+        given(client.getUri()).willReturn("http://localhost:8080");
+        given(authServer.db.findClientCredentials(clientId)).willReturn(client);
+        String redirectUri = "http://localhost:5000";
+
+        given(req.getUri())
+            .willReturn(
+                "http://example.com/oauth20/authorize?response_type=code&redirect_uri=" + redirectUri +
+                    "&client_id=" + clientId + "&state=" + state);
+        willReturn("basic").given(authServer.scopeService).getValidScope(null, clientId);
+
+        // WHEN
+        String response = authServer.issueAuthorizationCode(req);
+
+        // THEN
+        verify(authServer).generateCode();
+        assertTrue(response.contains(redirectUri));
     }
 
     @Test
@@ -1013,20 +1089,6 @@ public class AuthorizationServerTest {
         assertNull(result);
     }
 
-    @Test(expectedExceptions = OAuthException.class)
-    public void when_revoke_token_with_client_id_null_will_throw_exception() throws Exception {
-        // GIVEN
-        HttpRequest req = mock(HttpRequest.class);
-        String content = "{\"access_token\":\"9376e098e8190835a0b41d83355f92d66f425469\"," +
-                "\"client_secret\":\"bb635eb22c5b5ce3de06e31bb88be7ae\"}";
-        ChannelBuffer buf = ChannelBuffers.copiedBuffer(content.getBytes(CharsetUtil.UTF_8));
-        willReturn(buf).given(req).getContent();
-        //willReturn(null).given(authServer).getBasicAuthorizationClientId(req);
-
-        // WHEN
-        authServer.revokeToken(req);
-    }
-
     @Test
     public void when_revoke_token_get_access_token_null_return_false() throws Exception {
         // GIVEN
@@ -1047,7 +1109,6 @@ public class AuthorizationServerTest {
 
         // THEN
         assertFalse(revoked);
-        verify(authServer).isExistingClient(clientId);
     }
 
     @Test
@@ -1103,62 +1164,6 @@ public class AuthorizationServerTest {
     }
 
     @Test
-    public void when_revoke_token_issued_with_other_client_id_do_not_expire_and_return_false()
-            throws Exception {
-        // GIVEN
-        String clientId = "203598599234220";
-        String clientSecret = "bb635eb22c5b5ce3de06e31bb88be7ae";
-        String accessToken = "9376e098e8190835a0b41d83355f92d66f425469";
-        HttpRequest req = mock(HttpRequest.class);
-        String content = "{\"access_token\":" + accessToken + "," +
-                "\"client_id\":" + clientId + ",\"client_secret\":" + clientSecret + "}";
-        ChannelBuffer buf = ChannelBuffers.copiedBuffer(content.getBytes(CharsetUtil.UTF_8));
-        willReturn(buf).given(req).getContent();
-        willReturn(true).given(authServer).isExistingClient(clientId);
-
-        AccessToken dbAccessToken = mock(AccessToken.class);
-        willReturn(false).given(dbAccessToken).tokenExpired();
-        willReturn("0345901231313").given(dbAccessToken).getClientId();
-        willReturn(dbAccessToken).given(authServer.db).findAccessToken(accessToken);
-
-        // WHEN
-        boolean revoked = authServer.revokeToken(req);
-
-        // THEN
-        verify(authServer.db, times(0)).updateAccessTokenValidStatus(dbAccessToken.getToken(), false);
-        assertFalse(revoked);
-    }
-
-    @Test
-    public void when_revoke_token_with_invalid_client_credentials_return_bad_request()
-            throws Exception {
-        // GIVEN
-        String clientId = "203598599234220";
-        String clientSecret = "bb635eb22c5b5ce3de06e31bb88be7ae";
-        String accessToken = "9376e098e8190835a0b41d83355f92d66f425469";
-        HttpRequest req = mock(HttpRequest.class);
-        String content = "{\"access_token\":" + accessToken + "," +
-                "\"client_id\":" + clientId + ",\"client_secret\":" + clientSecret + "}";
-        ChannelBuffer buf = ChannelBuffers.copiedBuffer(content.getBytes(CharsetUtil.UTF_8));
-        willReturn(buf).given(req).getContent();
-        willReturn(false).given(authServer).isExistingClient(clientId);
-
-        // WHEN
-        String errorMsg = null;
-        HttpResponseStatus status = null;
-        try {
-            authServer.revokeToken(req);
-        } catch(OAuthException e) {
-            errorMsg = e.getMessage();
-            status = e.getHttpStatus();
-        }
-
-        // THEN
-        assertEquals(errorMsg, Response.INVALID_CLIENT_ID);
-        assertEquals(status, HttpResponseStatus.BAD_REQUEST);
-    }
-
-    @Test
     public void when_issue_auth_code_check_scope_valid() throws Exception {
         HttpRequest req = mock(HttpRequest.class);
         String clientId = "203598599234220";
@@ -1168,7 +1173,7 @@ public class AuthorizationServerTest {
 
         given(req.getUri()).willReturn(
                 "http://example.com/oauth20/authorize?redirect_uri=http%3A%2F%2Fexample.com&response_type=code&client_id="
-                        + clientId);
+                        + clientId + "&state=xyz");
         willReturn("basic").given(authServer.scopeService).getValidScope(null, clientId);
 
         // WHEN
@@ -1177,6 +1182,7 @@ public class AuthorizationServerTest {
         // THEN
         verify(authServer).generateCode();
         verify(authServer.scopeService).getValidScope(null, clientId);
+
     }
 
     @Test
@@ -1801,6 +1807,10 @@ public class AuthorizationServerTest {
         assertTrue(accessToken.getApplicationDetails() != null);
         assertTrue(accessToken.getDetails() != null); // For backward compatability
     }
+
+
+
+
 
     @Test
     public void when_issuing_password_token_it_should_have_application_details() throws Exception {

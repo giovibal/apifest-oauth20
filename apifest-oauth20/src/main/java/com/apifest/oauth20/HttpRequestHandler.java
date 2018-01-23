@@ -95,6 +95,8 @@ public class HttpRequestHandler extends SimpleChannelUpstreamHandler {
                 response = handleAuthorize(req);
             } else if (ACCESS_TOKEN_URI.equals(rawUri) && method.equals(HttpMethod.POST)) {
                 response = handleToken(req);
+            } else if (ACCESS_TOKEN_URI.equals(rawUri) && method.equals(HttpMethod.DELETE)) {
+                response = handleUserTokenRevoke(req);
             } else if (ACCESS_TOKEN_VALIDATE_URI.equals(rawUri) && method.equals(HttpMethod.GET)) {
                 response = handleTokenValidate(req);
             } else if (APPLICATION_URI.equals(rawUri) && method.equals(HttpMethod.GET)) {
@@ -309,6 +311,20 @@ public class HttpRequestHandler extends SimpleChannelUpstreamHandler {
         return response;
     }
 
+    protected HttpResponse handleUserTokenRevoke(HttpRequest req) {
+        boolean revoked = false;
+        try {
+            revoked = auth.revokeUserAccessTokens(req);
+        } catch (OAuthException e) {
+            log.error("cannot revoke token", e);
+            invokeExceptionHandler(e, req);
+            return Response.createOAuthExceptionResponse(e);
+        }
+        String json = "{\"revoked\":\"" + revoked + "\"}";
+        HttpResponse response = Response.createOkResponse(json);
+        return response;
+    }
+
     protected HttpResponse handleTokenRevoke(HttpRequest req) {
         boolean revoked = false;
         try {
@@ -318,8 +334,10 @@ public class HttpRequestHandler extends SimpleChannelUpstreamHandler {
             invokeExceptionHandler(e, req);
             return Response.createOAuthExceptionResponse(e);
         }
-        String json = "{\"revoked\":\"" + revoked + "\"}";
-        HttpResponse response = Response.createOkResponse(json);
+        //String json = "{\"revoked\":\"" + revoked + "\"}";
+        JsonObject json = new JsonObject();
+        json.addProperty("revoked", revoked);
+        HttpResponse response = Response.createOkResponse(json.toString());
         return response;
     }
 

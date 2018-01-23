@@ -120,7 +120,8 @@ public class AuthorizationServer {
     public String issueAuthorizationCode(HttpRequest req) throws OAuthException {
         AuthRequest authRequest = new AuthRequest(req);
         log.debug("received client_id:" + authRequest.getClientId());
-        if (!isActiveClientId(authRequest.getClientId())) {
+        ClientCredentials activeClientCredentials = getActiveClientCredentials(authRequest.getClientId());
+        if (activeClientCredentials == null) {
             throw new OAuthException(Response.INVALID_CLIENT_ID, HttpResponseStatus.BAD_REQUEST);
         }
         authRequest.validate();
@@ -136,8 +137,17 @@ public class AuthorizationServer {
         db.storeAuthCode(authCode);
 
         // return redirect URI, append param code=[Authcode]
-        QueryStringEncoder enc = new QueryStringEncoder(authRequest.getRedirectUri());
+        String redirectUri = authRequest.getRedirectUri();
+        if (redirectUri == null) {
+            redirectUri = activeClientCredentials.getUri();
+        }
+        QueryStringEncoder enc = new QueryStringEncoder(redirectUri);
         enc.addParam("code", authCode.getCode());
+
+        if(authCode.getState()!=null){
+            enc.addParam("state", authCode.getState());
+        }
+
         return enc.toString();
     }
 
@@ -360,12 +370,12 @@ public class AuthorizationServer {
         return AuthCode.generate();
     }
 
-    protected boolean isActiveClientId(String clientId) {
+    protected ClientCredentials getActiveClientCredentials(String clientId) {
         ClientCredentials creds = db.findClientCredentials(clientId);
         if (creds != null && creds.getStatus() == ClientCredentials.ACTIVE_STATUS) {
-            return true;
+            return creds;
         }
-        return false;
+        return null;
     }
 
     // check only that clientId and clientSecret are valid, NOT that the status is active
@@ -397,14 +407,18 @@ public class AuthorizationServer {
         return String.valueOf(scopeService.getExpiresIn(tokenGrantType, scope));
     }
 
+    public boolean revokeUserAccessTokens(HttpRequest req) throws OAuthException {
+        RevokeUserTokensRequest revokeRequest = new RevokeUserTokensRequest(req);
+        revokeRequest.checkMandatoryParams();
+        String userId = revokeRequest.getUserId();
+        db.removeUserTokens(userId);
+        log.debug("access tokens for user {} deleted", userId);
+        return true;
+    }
+
     public boolean revokeToken(HttpRequest req) throws OAuthException {
         RevokeTokenRequest revokeRequest = new RevokeTokenRequest(req);
         revokeRequest.checkMandatoryParams();
-        String clientId = revokeRequest.getClientId();
-        // check valid client_id, status does not matter as token of inactive client app could be revoked too
-        if (!isExistingClient(clientId)) {
-            throw new OAuthException(Response.INVALID_CLIENT_ID, HttpResponseStatus.BAD_REQUEST);
-        }
         String token = revokeRequest.getAccessToken();
         AccessToken accessToken = db.findAccessToken(token);
         if (accessToken != null) {
@@ -412,14 +426,9 @@ public class AuthorizationServer {
                 log.debug("access token {} is expired", token);
                 return true;
             }
-            if (clientId.equals(accessToken.getClientId())) {
-                db.removeAccessToken(accessToken.getToken());
-                log.debug("access token {} set status invalid", token);
-                return true;
-            } else {
-                log.debug("access token {} is not obtained for that clientId {}", token, clientId);
-                return false;
-            }
+            db.removeAccessToken(accessToken.getToken());
+            log.debug("access token {} set status invalid", token);
+            return true;
         }
         log.debug("access token {} not found", token);
         return false;

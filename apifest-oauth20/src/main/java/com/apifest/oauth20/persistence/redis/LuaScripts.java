@@ -179,7 +179,25 @@ public class LuaScripts {
 
     private static final String DEL_TOKEN_SCRIPT = ""
             + "local token = ARGV[1]; "
-            + "redis.call('EXPIRE','at:'..token, 0); ";
+            + "local tokenDetails = redis.call('HMGET','at:'..token,'clientId','userId','refreshToken'); "
+            + "redis.call('EXPIRE','at:'..token, 0); "
+            + "if tokenDetails ~= nil and next(tokenDetails) ~= nil then "
+            + "  redis.call('EXPIRE', 'atr:'..tokenDetails[3]..tokenDetails[1], 0); "
+            + "  redis.call('EXPIRE','atuid:'..tokenDetails[1]..'.'..tokenDetails[2], 0); "
+            + "end ";
+
+    private static final String DEL_ALL_AT_BY_USER_SCRIPT = ""
+            + "local user_id = ARGV[1]; "
+            + "local keys = redis.call('KEYS','atuid:'..user_id..':*'); "
+            + "for i,v in ipairs(keys) do "
+            + "  local token_id = redis.call('HGET', v, 'access_token'); "
+            + "  local tokenDetails = redis.call('HMGET','at:'..token_id,'refreshToken', 'clientId'); "
+            + "  redis.call('EXPIRE','at:'..token_id, 0); "
+            + "  if tokenDetails ~= nil and next(tokenDetails) ~= nil then "
+            + "    redis.call('EXPIRE', v, 0); "
+            + "    redis.call('EXPIRE', 'atuid:'..tokenDetails[1]..tokenDetails[2], 0); "
+            + "  end "
+            + "end ";
 
     public static Object runScript(ScriptType scriptType, List<String> keys, List<String> args) {
         Object result;
@@ -247,6 +265,8 @@ public class LuaScripts {
             return GET_AT_BY_USER_AND_APP_SCRIPT;
         case DEL_TOKEN:
             return DEL_TOKEN_SCRIPT;
+        case DEL_ALL_AT_BY_USER:
+            return DEL_ALL_AT_BY_USER_SCRIPT;
         default:
             throw new InvalidParameterException("Script " + scriptType + " cannot be found!");
 
